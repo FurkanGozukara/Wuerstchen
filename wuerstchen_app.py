@@ -9,6 +9,7 @@ from diffusers.utils import numpy_to_pil
 from diffusers import WuerstchenDecoderPipeline, WuerstchenPriorPipeline
 from diffusers.pipelines.wuerstchen import DEFAULT_STAGE_C_TIMESTEPS
 from previewer.modules import Previewer
+
 os.environ['TOKENIZERS_PARALLELISM'] = 'false'
 
 DESCRIPTION = "# Würstchen"
@@ -25,9 +26,11 @@ PREVIEW_IMAGES = True
 
 dtype = torch.float16
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
 if torch.cuda.is_available():
     prior_pipeline = WuerstchenPriorPipeline.from_pretrained("warp-ai/wuerstchen-prior", torch_dtype=dtype)
     decoder_pipeline = WuerstchenDecoderPipeline.from_pretrained("warp-ai/wuerstchen", torch_dtype=dtype)
+
     if ENABLE_CPU_OFFLOAD:
         prior_pipeline.enable_model_cpu_offload()
         decoder_pipeline.enable_model_cpu_offload()
@@ -38,19 +41,19 @@ if torch.cuda.is_available():
     if USE_TORCH_COMPILE:
         prior_pipeline.prior = torch.compile(prior_pipeline.prior, mode="reduce-overhead", fullgraph=True)
         decoder_pipeline.decoder = torch.compile(decoder_pipeline.decoder, mode="reduce-overhead", fullgraph=True)
-    
-	if PREVIEW_IMAGES:
-	    file_path = "text2img_wurstchen_b_v1_previewer_100k.pt"
-	    url = "https://huggingface.co/MonsterMMORPG/SECourses/resolve/main/text2img_wurstchen_b_v1_previewer_100k.pt"
-	
-	    if not os.path.exists(file_path):
-	        response = requests.get(url, allow_redirects=True)
-	        with open(file_path, 'wb') as file:
-	            file.write(response.content)
-	
-	    previewer = Previewer()
-	    previewer.load_state_dict(torch.load(file_path)["state_dict"])
-	    previewer.eval().requires_grad_(False).to(device).to(dtype)
+
+    if PREVIEW_IMAGES:
+        file_path = "text2img_wurstchen_b_v1_previewer_100k.pt"
+        url = "https://huggingface.co/MonsterMMORPG/SECourses/resolve/main/text2img_wurstchen_b_v1_previewer_100k.pt"
+
+        if not os.path.exists(file_path):
+            response = requests.get(url, allow_redirects=True)
+            with open(file_path, 'wb') as file:
+                file.write(response.content)
+
+        previewer = Previewer()
+        previewer.load_state_dict(torch.load(file_path)["state_dict"])
+        previewer.eval().requires_grad_(False).to(device).to(dtype)
 
         def callback_prior(i, t, latents):
             output = previewer(latents)
@@ -71,18 +74,16 @@ def randomize_seed_fn(seed: int, randomize_seed: bool) -> int:
 
 
 def generate(
-    prompt: str,
-    negative_prompt: str = "",
-    seed: int = 0,
-    width: int = 1024,
-    height: int = 1024,
-    prior_num_inference_steps: int = 60,
-    # prior_timesteps: List[float] = None,
-    prior_guidance_scale: float = 4.0,
-    decoder_num_inference_steps: int = 12,
-    # decoder_timesteps: List[float] = None,
-    decoder_guidance_scale: float = 0.0,
-    num_images_per_prompt: int = 1,
+        prompt: str,
+        negative_prompt: str = "",
+        seed: int = 0,
+        width: int = 1024,
+        height: int = 1024,
+        prior_num_inference_steps: int = 60,
+        prior_guidance_scale: float = 4.0,
+        decoder_num_inference_steps: int = 12,
+        decoder_guidance_scale: float = 0.0,
+        num_images_per_prompt: int = 1,
 ) -> PIL.Image.Image:
     generator = torch.Generator().manual_seed(seed)
 
@@ -90,8 +91,7 @@ def generate(
         prompt=prompt,
         height=height,
         width=width,
-		num_inference_steps  = prior_num_inference_steps,
-        # timesteps=DEFAULT_STAGE_C_TIMESTEPS,
+        num_inference_steps=prior_num_inference_steps,
         negative_prompt=negative_prompt,
         guidance_scale=prior_guidance_scale,
         num_images_per_prompt=num_images_per_prompt,
@@ -99,12 +99,10 @@ def generate(
         callback=callback_prior,
     )
 
-   
     decoder_output = decoder_pipeline(
         image_embeddings=prior_output.image_embeddings,
         prompt=prompt,
-		num_inference_steps = decoder_num_inference_steps,
-        # timesteps=decoder_timesteps,
+        num_inference_steps=decoder_num_inference_steps,
         guidance_scale=decoder_guidance_scale,
         negative_prompt=negative_prompt,
         generator=generator,
@@ -200,68 +198,4 @@ with gr.Blocks(css="style.css") as demo:
                 label="Decoder Inference Steps",
                 minimum=1,
                 maximum=240,
-                step=1,
-                value=12,
-            )
-
-    gr.Examples(
-        examples=examples,
-        inputs=prompt,
-        outputs=result,
-        fn=generate,
-        cache_examples=CACHE_EXAMPLES,
-    )
-
-    inputs = [
-            prompt,
-            negative_prompt,
-            seed,
-            width,
-            height,
-            prior_num_inference_steps,
-            # prior_timesteps,
-            prior_guidance_scale,
-            decoder_num_inference_steps,
-            # decoder_timesteps,
-            decoder_guidance_scale,
-            num_images_per_prompt,
-    ]
-    prompt.submit(
-        fn=randomize_seed_fn,
-        inputs=[seed, randomize_seed],
-        outputs=seed,
-        queue=False,
-        api_name=False,
-    ).then(
-        fn=generate,
-        inputs=inputs,
-        outputs=result,
-        api_name="run",
-    )
-    negative_prompt.submit(
-        fn=randomize_seed_fn,
-        inputs=[seed, randomize_seed],
-        outputs=seed,
-        queue=False,
-        api_name=False,
-    ).then(
-        fn=generate,
-        inputs=inputs,
-        outputs=result,
-        api_name=False,
-    )
-    run_button.click(
-        fn=randomize_seed_fn,
-        inputs=[seed, randomize_seed],
-        outputs=seed,
-        queue=False,
-        api_name=False,
-    ).then(
-        fn=generate,
-        inputs=inputs,
-        outputs=result,
-        api_name=False,
-    )
-
-if __name__ == "__main__":
-    demo.queue(max_size=20).launch()
+                step=1
