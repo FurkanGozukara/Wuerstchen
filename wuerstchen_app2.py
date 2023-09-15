@@ -1,4 +1,5 @@
 import os
+import requests
 import random
 import gradio as gr
 import numpy as np
@@ -39,18 +40,18 @@ if torch.cuda.is_available():
         prior_pipeline.prior = torch.compile(prior_pipeline.prior, mode="reduce-overhead", fullgraph=True)
         decoder_pipeline.decoder = torch.compile(decoder_pipeline.decoder, mode="reduce-overhead", fullgraph=True)
     
-	if PREVIEW_IMAGES:
-	    file_path = "text2img_wurstchen_b_v1_previewer_100k.pt"
-	    url = "https://huggingface.co/MonsterMMORPG/SECourses/resolve/main/text2img_wurstchen_b_v1_previewer_100k.pt"
-	
-	    if not os.path.exists(file_path):
-	        response = requests.get(url, allow_redirects=True)
-	        with open(file_path, 'wb') as file:
-	            file.write(response.content)
-	
-	    previewer = Previewer()
-	    previewer.load_state_dict(torch.load(file_path)["state_dict"])
-	    previewer.eval().requires_grad_(False).to(device).to(dtype)
+    if PREVIEW_IMAGES:
+        file_path = "text2img_wurstchen_b_v1_previewer_100k.pt"
+        url = "https://huggingface.co/MonsterMMORPG/SECourses/resolve/main/text2img_wurstchen_b_v1_previewer_100k.pt"
+
+        if not os.path.exists(file_path):
+            response = requests.get(url, allow_redirects=True)
+            with open(file_path, 'wb') as file:
+                file.write(response.content)
+
+        previewer = Previewer()
+        previewer.load_state_dict(torch.load(file_path)["state_dict"])
+        previewer.eval().requires_grad_(False).to(device).to(dtype)
 
         def callback_prior(i, t, latents):
             output = previewer(latents)
