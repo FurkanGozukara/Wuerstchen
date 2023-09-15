@@ -1,5 +1,6 @@
 import os
 import random
+import requests
 import gradio as gr
 import numpy as np
 import PIL.Image
@@ -198,4 +199,66 @@ with gr.Blocks(css="style.css") as demo:
                 label="Decoder Inference Steps",
                 minimum=1,
                 maximum=240,
-                step=1
+                step=1,
+                value=12,
+            )
+
+    gr.Examples(
+        examples=examples,
+        inputs=prompt,
+        outputs=result,
+        fn=generate,
+        cache_examples=CACHE_EXAMPLES,
+    )
+
+    inputs = [
+        prompt,
+        negative_prompt,
+        seed,
+        width,
+        height,
+        prior_num_inference_steps,
+        prior_guidance_scale,
+        decoder_num_inference_steps,
+        decoder_guidance_scale,
+        num_images_per_prompt,
+    ]
+    prompt.submit(
+        fn=randomize_seed_fn,
+        inputs=[seed, randomize_seed],
+        outputs=seed,
+        queue=False,
+        api_name=False,
+    ).then(
+        fn=generate,
+        inputs=inputs,
+        outputs=result,
+        api_name="run",
+    )
+    negative_prompt.submit(
+        fn=randomize_seed_fn,
+        inputs=[seed, randomize_seed],
+        outputs=seed,
+        queue=False,
+        api_name=False,
+    ).then(
+        fn=generate,
+        inputs=inputs,
+        outputs=result,
+        api_name=False,
+    )
+    run_button.click(
+        fn=randomize_seed_fn,
+        inputs=[seed, randomize_seed],
+        outputs=seed,
+        queue=False,
+        api_name=False,
+    ).then(
+        fn=generate,
+        inputs=inputs,
+        outputs=result,
+        api_name=False,
+    )
+
+if __name__ == "__main__":
+    demo.queue(max_size=20).launch()
