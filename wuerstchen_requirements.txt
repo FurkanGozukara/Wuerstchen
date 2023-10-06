@@ -9,3 +9,4 @@ Pillow==10.0.0
 transformers==4.32.1
 compel
 xformers
+requests
