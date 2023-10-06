@@ -8,5 +8,5 @@ invisible-watermark==0.2.0
 Pillow==10.0.0
 transformers==4.32.1
 compel
-xformers
+xformers==0.0.22
 requests
