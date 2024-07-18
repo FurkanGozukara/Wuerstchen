@@ -1,5 +1,5 @@
 --extra-index-url https://download.pytorch.org/whl/cu118
-torch
+torch==2.2.0
 torchvision
 accelerate==0.22.0
 diffusers
@@ -8,5 +8,5 @@ invisible-watermark==0.2.0
 Pillow==10.0.0
 transformers==4.32.1
 compel
-xformers==0.0.22
+xformers==0.0.26.post1
 requests
