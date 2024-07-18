@@ -5,6 +5,9 @@ import gradio as gr
 import numpy as np
 import PIL.Image
 import torch
+import argparse
+import subprocess
+import platform
 from typing import List
 from diffusers.utils import numpy_to_pil
 from diffusers import WuerstchenDecoderPipeline, WuerstchenPriorPipeline
@@ -67,12 +70,21 @@ else:
     prior_pipeline = None
     decoder_pipeline = None
 
+# Create outputs folder if it doesn't exist
+os.makedirs("outputs", exist_ok=True)
+
+def get_next_filename():
+    index = 1
+    while True:
+        filename = f"outputs/img_{index:04d}.png"
+        if not os.path.exists(filename):
+            return filename
+        index += 1
 
 def randomize_seed_fn(seed: int, randomize_seed: bool) -> int:
     if randomize_seed:
         seed = random.randint(0, MAX_SEED)
     return seed
-
 
 def generate(
         prompt: str,
@@ -109,156 +121,183 @@ def generate(
         generator=generator,
         output_type="pil",
     ).images
+
+    # Save generated images
+    for img in decoder_output:
+        filename = get_next_filename()
+        img.save(filename)
+
     yield decoder_output
 
+def open_outputs_folder():
+    output_path = os.path.abspath("outputs")
+    if platform.system() == "Windows":
+        os.startfile(output_path)
+    elif platform.system() == "Darwin":  # macOS
+        subprocess.Popen(["open", output_path])
+    else:  # Linux and other Unix-like
+        subprocess.Popen(["xdg-open", output_path])
 
 examples = [
     "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k",
     "An astronaut riding a green horse",
 ]
 
-with gr.Blocks(css="style.css") as demo:
-    gr.Markdown(DESCRIPTION)
-    gr.DuplicateButton(
-        value="Duplicate Space for private use",
-        elem_id="duplicate-button",
-        visible=os.getenv("SHOW_DUPLICATE_BUTTON") == "1",
-    )
-    with gr.Group():
-        with gr.Row():
-            prompt = gr.Text(
-                label="Prompt",
-                show_label=False,
+def create_demo():
+    with gr.Blocks(css="style.css") as demo:
+        gr.Markdown(DESCRIPTION)
+        gr.DuplicateButton(
+            value="Duplicate Space for private use",
+            elem_id="duplicate-button",
+            visible=os.getenv("SHOW_DUPLICATE_BUTTON") == "1",
+        )
+        with gr.Group():
+            with gr.Row():
+                prompt = gr.Text(
+                    label="Prompt",
+                    show_label=False,
+                    max_lines=1,
+                    placeholder="Enter your prompt",
+                    container=False,
+                )
+                run_button = gr.Button("Run", scale=0)
+            result = gr.Gallery(label="Result", show_label=False)
+        
+        # Add "Open Outputs Folder" button
+        open_folder_button = gr.Button("Open Outputs Folder")
+        open_folder_button.click(fn=open_outputs_folder, inputs=None, outputs=None)
+        
+        with gr.Accordion("Advanced options", open=False):
+            negative_prompt = gr.Text(
+                label="Negative prompt",
                 max_lines=1,
-                placeholder="Enter your prompt",
-                container=False,
+                placeholder="Enter a Negative Prompt",
             )
-            run_button = gr.Button("Run", scale=0)
-        result = gr.Gallery(label="Result", show_label=False)
-    with gr.Accordion("Advanced options", open=False):
-        negative_prompt = gr.Text(
-            label="Negative prompt",
-            max_lines=1,
-            placeholder="Enter a Negative Prompt",
+
+            seed = gr.Slider(
+                label="Seed",
+                minimum=0,
+                maximum=MAX_SEED,
+                step=1,
+                value=0,
+            )
+            randomize_seed = gr.Checkbox(label="Randomize seed", value=True)
+            with gr.Row():
+                width = gr.Slider(
+                    label="Width",
+                    minimum=1024,
+                    maximum=MAX_IMAGE_SIZE,
+                    step=512,
+                    value=1024,
+                )
+                height = gr.Slider(
+                    label="Height",
+                    minimum=1024,
+                    maximum=MAX_IMAGE_SIZE,
+                    step=512,
+                    value=1024,
+                )
+                num_images_per_prompt = gr.Slider(
+                    label="Number of Images",
+                    minimum=1,
+                    maximum=20,
+                    step=1,
+                    value=1,
+                )
+            with gr.Row():
+                prior_guidance_scale = gr.Slider(
+                    label="Prior Guidance Scale",
+                    minimum=0,
+                    maximum=40,
+                    step=0.1,
+                    value=4.0,
+                )
+                prior_num_inference_steps = gr.Slider(
+                    label="Prior Inference Steps",
+                    minimum=1,
+                    maximum=240,
+                    step=1,
+                    value=30,
+                )
+
+                decoder_guidance_scale = gr.Slider(
+                    label="Decoder Guidance Scale",
+                    minimum=0,
+                    maximum=20,
+                    step=0.1,
+                    value=0.0,
+                )
+                decoder_num_inference_steps = gr.Slider(
+                    label="Decoder Inference Steps",
+                    minimum=1,
+                    maximum=240,
+                    step=1,
+                    value=12,
+                )
+
+        gr.Examples(
+            examples=examples,
+            inputs=prompt,
+            outputs=result,
+            fn=generate,
+            cache_examples=CACHE_EXAMPLES,
         )
 
-        seed = gr.Slider(
-            label="Seed",
-            minimum=0,
-            maximum=MAX_SEED,
-            step=1,
-            value=0,
+        inputs = [
+            prompt,
+            negative_prompt,
+            seed,
+            width,
+            height,
+            prior_num_inference_steps,
+            prior_guidance_scale,
+            decoder_num_inference_steps,
+            decoder_guidance_scale,
+            num_images_per_prompt,
+        ]
+        prompt.submit(
+            fn=randomize_seed_fn,
+            inputs=[seed, randomize_seed],
+            outputs=seed,
+            queue=False,
+            api_name=False,
+        ).then(
+            fn=generate,
+            inputs=inputs,
+            outputs=result,
+            api_name="run",
         )
-        randomize_seed = gr.Checkbox(label="Randomize seed", value=True)
-        with gr.Row():
-            width = gr.Slider(
-                label="Width",
-                minimum=1024,
-                maximum=MAX_IMAGE_SIZE,
-                step=512,
-                value=1024,
-            )
-            height = gr.Slider(
-                label="Height",
-                minimum=1024,
-                maximum=MAX_IMAGE_SIZE,
-                step=512,
-                value=1024,
-            )
-            num_images_per_prompt = gr.Slider(
-                label="Number of Images",
-                minimum=1,
-                maximum=20,
-                step=1,
-                value=1,
-            )
-        with gr.Row():
-            prior_guidance_scale = gr.Slider(
-                label="Prior Guidance Scale",
-                minimum=0,
-                maximum=40,
-                step=0.1,
-                value=4.0,
-            )
-            prior_num_inference_steps = gr.Slider(
-                label="Prior Inference Steps",
-                minimum=1,
-                maximum=240,
-                step=1,
-                value=30,
-            )
+        negative_prompt.submit(
+            fn=randomize_seed_fn,
+            inputs=[seed, randomize_seed],
+            outputs=seed,
+            queue=False,
+            api_name=False,
+        ).then(
+            fn=generate,
+            inputs=inputs,
+            outputs=result,
+            api_name=False,
+        )
+        run_button.click(
+            fn=randomize_seed_fn,
+            inputs=[seed, randomize_seed],
+            outputs=seed,
+            queue=False,
+            api_name=False,
+        ).then(
+            fn=generate,
+            inputs=inputs,
+            outputs=result,
+            api_name=False,
+        )
 
-            decoder_guidance_scale = gr.Slider(
-                label="Decoder Guidance Scale",
-                minimum=0,
-                maximum=20,
-                step=0.1,
-                value=0.0,
-            )
-            decoder_num_inference_steps = gr.Slider(
-                label="Decoder Inference Steps",
-                minimum=1,
-                maximum=240,
-                step=1,
-                value=12,
-            )
-
-    gr.Examples(
-        examples=examples,
-        inputs=prompt,
-        outputs=result,
-        fn=generate,
-        cache_examples=CACHE_EXAMPLES,
-    )
-
-    inputs = [
-        prompt,
-        negative_prompt,
-        seed,
-        width,
-        height,
-        prior_num_inference_steps,
-        prior_guidance_scale,
-        decoder_num_inference_steps,
-        decoder_guidance_scale,
-        num_images_per_prompt,
-    ]
-    prompt.submit(
-        fn=randomize_seed_fn,
-        inputs=[seed, randomize_seed],
-        outputs=seed,
-        queue=False,
-        api_name=False,
-    ).then(
-        fn=generate,
-        inputs=inputs,
-        outputs=result,
-        api_name="run",
-    )
-    negative_prompt.submit(
-        fn=randomize_seed_fn,
-        inputs=[seed, randomize_seed],
-        outputs=seed,
-        queue=False,
-        api_name=False,
-    ).then(
-        fn=generate,
-        inputs=inputs,
-        outputs=result,
-        api_name=False,
-    )
-    run_button.click(
-        fn=randomize_seed_fn,
-        inputs=[seed, randomize_seed],
-        outputs=seed,
-        queue=False,
-        api_name=False,
-    ).then(
-        fn=generate,
-        inputs=inputs,
-        outputs=result,
-        api_name=False,
-    )
+    return demo
 
 if __name__ == "__main__":
-    demo.queue(max_size=20).launch()
+    parser = argparse.ArgumentParser(description="Würstchen Text-to-Image Generation")
+    parser.add_argument("--share", action="store_true", help="Enable sharing of the Gradio interface")
+    args = parser.parse_args()
+
+    demo = create_demo()
+    demo.queue(max_size=20).launch(share=args.share, inbrowser=True)
