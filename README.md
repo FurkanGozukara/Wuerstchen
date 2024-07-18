@@ -1,4 +1,4 @@
-Auto installer of this repo > 
+Auto installer of this repo > https://www.patreon.com/posts/auto-windows-for-89265135
 
 Our YouTube Channel : https://www.youtube.com/SECourses
 
